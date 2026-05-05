@@ -39,54 +39,72 @@ export default function ManageBookingsPage() {
   const [myHostingBookings, setMyHostingBookings] = useState<Booking[]>([])
   const [allCarsMap, setAllCarsMap] = useState<Record<string, CarType>>({})
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchData() {
       if (!user) { setIsLoading(false); return }
-      
       setIsLoading(true)
-      
-      // Fetch my trips
-      const { data: trips } = await supabase.from('bookings').select('*').eq('user_id', user.id)
-      if (trips) setMyTrips(trips as unknown as Booking[])
-      
-      // Fetch my cars
-      const { data: cars } = await supabase.from('cars').select('*').eq('host_id', user.id)
-      if (cars) setMyCars(cars as unknown as CarType[])
-      
-      // Fetch bookings for my cars
-      const { data: hostBookings } = await supabase.from('bookings').select('*').eq('host_id', user.id)
-      if (hostBookings) {
-        setMyHostingBookings(
-          (hostBookings as unknown as Booking[]).filter(b => b.status === 'active' || b.status === 'upcoming')
-        )
-      }
-      
-      // Fetch cars for all bookings (trips + hosting) to display
-      const allCarIds = new Set([
-        ...(trips || []).map(b => b.car_id), 
-        ...(hostBookings || []).map(b => b.car_id),
-        ...(cars || []).map(c => c.id)
-      ])
-      
-      if (allCarIds.size > 0) {
-        const { data: allCars } = await supabase.from('cars').select('*').in('id', Array.from(allCarIds))
-        if (allCars) {
-          const cMap: Record<string, any> = {}
-          allCars.forEach(c => { 
-            cMap[c.id] = { ...c, location: { wilaya: c.wilaya, city: c.city, address: c.address } }
-          })
-          setAllCarsMap(cMap)
+      setError(null)
+      try {
+        // Fetch my trips
+        const { data: trips, error: e1 } = await supabase.from('bookings').select('*').eq('user_id', user.id)
+        if (e1) throw new Error(e1.message)
+        if (trips) setMyTrips(trips as unknown as Booking[])
+        
+        // Fetch my cars
+        const { data: cars, error: e2 } = await supabase.from('cars').select('*').eq('host_id', user.id)
+        if (e2) throw new Error(e2.message)
+        if (cars) setMyCars(cars as unknown as CarType[])
+        
+        // Fetch bookings for my cars
+        const { data: hostBookings, error: e3 } = await supabase.from('bookings').select('*').eq('host_id', user.id)
+        if (e3) throw new Error(e3.message)
+        if (hostBookings) {
+          setMyHostingBookings(
+            (hostBookings as unknown as Booking[]).filter(b => b.status === 'active' || b.status === 'upcoming')
+          )
         }
+        
+        // Fetch cars for display
+        const allCarIds = new Set([
+          ...(trips || []).map((b: any) => b.car_id), 
+          ...(hostBookings || []).map((b: any) => b.car_id),
+          ...(cars || []).map((c: any) => c.id)
+        ])
+        
+        if (allCarIds.size > 0) {
+          const { data: allCars } = await supabase.from('cars').select('*').in('id', Array.from(allCarIds))
+          if (allCars) {
+            const cMap: Record<string, any> = {}
+            allCars.forEach(c => { 
+              cMap[c.id] = { ...c, location: { wilaya: c.wilaya, city: c.city, address: c.address } }
+            })
+            setAllCarsMap(cMap)
+          }
+        }
+      } catch (err: any) {
+        console.error('Error loading bookings:', err)
+        setError(err.message || 'Erreur lors du chargement des données')
+      } finally {
+        setIsLoading(false)
       }
-      
-      setIsLoading(false)
     }
     fetchData()
   }, [user])
 
   if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
   if (!user) return <div className="min-h-screen flex items-center justify-center text-gray-500">Veuillez vous connecter pour voir vos réservations.</div>
+  if (error) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center max-w-md px-4">
+        <div className="text-5xl mb-4">⚠️</div>
+        <h2 className="text-xl font-bold mb-2">Erreur de chargement</h2>
+        <p className="text-muted-foreground text-sm mb-4">{error}</p>
+        <button onClick={() => window.location.reload()} className="bg-blue-600 text-white font-bold px-6 py-2 rounded-xl hover:bg-blue-700 transition-colors">Réessayer</button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-secondary/30 pb-20">
