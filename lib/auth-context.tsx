@@ -2,7 +2,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { supabase } from './supabase'
 
-export interface AuthUser { id: string; name: string; email: string; phone: string; avatar: string }
+export interface AuthUser { id: string; name: string; email: string; phone: string; avatar: string; is_admin: boolean }
 
 interface AuthContextType {
   user: AuthUser | null
@@ -86,7 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: data.name || '',
           email: data.email || authUser.email || '',
           phone: data.phone || '',
-          avatar: data.avatar_url || ''
+          avatar: data.avatar_url || '',
+          is_admin: data.is_admin || false
         })
       }
     } catch (err) {

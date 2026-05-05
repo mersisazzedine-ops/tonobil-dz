@@ -39,6 +39,14 @@ export default function AccountPage() {
     toast.success('Profil mis à jour!')
   }
 
+  const handleBecomeAdmin = async () => {
+    if (!user) return
+    const { error } = await supabase.from('users').update({ is_admin: true }).eq('id', user.id)
+    if (error) { toast.error('Erreur'); return }
+    toast.success('Vous êtes maintenant admin !')
+    setTimeout(() => window.location.reload(), 1000)
+  }
+
   const uploadDoc = async (file: File, type: 'id' | 'license') => {
     if (!user) return
     toast.info('Téléchargement en cours...')
@@ -191,6 +199,21 @@ export default function AccountPage() {
         </div>
 
       </div>
+
+      {/* Dev Only: Make Admin */}
+      {!user?.is_admin && (
+        <div className="max-w-3xl mx-auto px-4 mt-8">
+          <div className="bg-red-50 rounded-2xl border border-red-200 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <h2 className="text-red-800 font-bold text-lg flex items-center gap-2"><Shield className="w-5 h-5" /> Mode Développeur</h2>
+              <p className="text-red-600 text-sm">Obtenez les droits d'administration pour tester le tableau de bord Admin.</p>
+            </div>
+            <button onClick={handleBecomeAdmin} className="bg-red-600 text-white font-bold px-6 py-2 rounded-xl hover:bg-red-700 transition-colors whitespace-nowrap">
+              Devenir Admin
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

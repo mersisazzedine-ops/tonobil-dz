@@ -5,11 +5,14 @@ import { formatPriceShort, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { User, Car as CarType, Booking } from '@/lib/mock-data'
+import { useAuth } from '@/lib/auth-context'
+import Link from 'next/link'
 
 type Tab = 'overview' | 'users' | 'cars' | 'finances' | 'hosts'
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const { user, isLoading: authLoading } = useAuth()
   
   const [pendingUsers, setPendingUsers] = useState<User[]>([])
   const [pendingHosts, setPendingHosts] = useState<User[]>([])
@@ -19,8 +22,10 @@ export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    if (user?.is_admin) {
+      fetchData()
+    }
+  }, [user])
 
   const fetchData = async () => {
     setIsLoading(true)
@@ -99,7 +104,20 @@ export default function AdminDashboard() {
   const activeBookings = bookings.filter(b => b.status === 'active' || b.status === 'upcoming').length
   const platformRevenue = bookings.reduce((acc, b) => acc + (b.total_price * 0.1), 0) // 10% fee
 
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+  if (authLoading || (user?.is_admin && isLoading)) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+
+  if (!user || !user.is_admin) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-secondary/30 px-4 text-center">
+        <Shield className="w-20 h-20 text-red-500 mb-6" />
+        <h1 className="text-4xl font-black text-foreground mb-4">Accès Refusé</h1>
+        <p className="text-muted-foreground max-w-md mb-8">Vous n'avez pas les droits d'administration nécessaires pour accéder à cette page.</p>
+        <Link href="/" className="bg-primary text-white font-bold px-8 py-3 rounded-xl hover:bg-blue-700 transition-colors">
+          Retour à l'accueil
+        </Link>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-secondary/30 flex">

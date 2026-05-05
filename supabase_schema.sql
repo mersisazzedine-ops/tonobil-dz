@@ -46,6 +46,7 @@ create table public.users (
   host_status host_status_enum default 'none',
   id_document_url text,
   license_document_url text,
+  is_admin boolean default false,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -144,6 +145,10 @@ create policy "Users can update own profile"
   on public.users for update using (auth.uid() = id);
 create policy "Users can insert own profile"
   on public.users for insert with check (auth.uid() = id);
+create policy "Admins can update any profile"
+  on public.users for update using (
+    exists (select 1 from public.users as u where u.id = auth.uid() and u.is_admin = true)
+  );
 
 -- Cars
 create policy "Cars are viewable by everyone"
@@ -154,10 +159,22 @@ create policy "Hosts can update their own cars"
   on public.cars for update using (auth.uid() = host_id);
 create policy "Hosts can delete their own cars"
   on public.cars for delete using (auth.uid() = host_id);
+create policy "Admins can update any car"
+  on public.cars for update using (
+    exists (select 1 from public.users as u where u.id = auth.uid() and u.is_admin = true)
+  );
+create policy "Admins can delete any car"
+  on public.cars for delete using (
+    exists (select 1 from public.users as u where u.id = auth.uid() and u.is_admin = true)
+  );
 
 -- Bookings
 create policy "Users can view their own bookings"
   on public.bookings for select using (auth.uid() = user_id or auth.uid() = host_id);
+create policy "Admins can view all bookings"
+  on public.bookings for select using (
+    exists (select 1 from public.users as u where u.id = auth.uid() and u.is_admin = true)
+  );
 create policy "Users can create bookings"
   on public.bookings for insert with check (auth.uid() = user_id);
 create policy "Users and hosts can update bookings"
@@ -178,9 +195,12 @@ insert into storage.buckets (id, name, public)
 values ('car-images', 'car-images', true)
 on conflict (id) do nothing;
 
+drop policy if exists "Car images are publicly accessible" on storage.objects;
 create policy "Car images are publicly accessible"
   on storage.objects for select
   using (bucket_id = 'car-images');
+
+drop policy if exists "Authenticated users can upload car images" on storage.objects;
 create policy "Authenticated users can upload car images"
   on storage.objects for insert
   with check (bucket_id = 'car-images' and auth.role() = 'authenticated');
@@ -190,9 +210,12 @@ insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', true)
 on conflict (id) do nothing;
 
+drop policy if exists "Avatars are publicly accessible" on storage.objects;
 create policy "Avatars are publicly accessible"
   on storage.objects for select
   using (bucket_id = 'avatars');
+
+drop policy if exists "Authenticated users can upload avatars" on storage.objects;
 create policy "Authenticated users can upload avatars"
   on storage.objects for insert
   with check (bucket_id = 'avatars' and auth.role() = 'authenticated');
@@ -202,9 +225,12 @@ insert into storage.buckets (id, name, public)
 values ('kyc-documents', 'kyc-documents', false)
 on conflict (id) do nothing;
 
+drop policy if exists "Users can view their own documents" on storage.objects;
 create policy "Users can view their own documents"
   on storage.objects for select
   using (bucket_id = 'kyc-documents' and auth.uid()::text = (storage.foldername(name))[1]);
+
+drop policy if exists "Users can upload their own documents" on storage.objects;
 create policy "Users can upload their own documents"
   on storage.objects for insert
   with check (bucket_id = 'kyc-documents' and auth.role() = 'authenticated');
