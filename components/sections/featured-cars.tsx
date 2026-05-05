@@ -1,13 +1,47 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Heart, Star, Zap, Users, Fuel, Car } from 'lucide-react'
-import { MOCK_CARS, getHostById } from '@/lib/mock-data'
+import { Heart, Star, Zap, Users, Fuel, Car, Loader2 } from 'lucide-react'
 import { formatPriceShort, getInitials } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
 
 export function FeaturedCarsSection() {
   const [saved, setSaved] = useState<Set<string>>(new Set())
-  const featured = MOCK_CARS.slice(0, 8)
+  const [featured, setFeatured] = useState<any[]>([])
+  const [hosts, setHosts] = useState<Record<string, any>>({})
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchFeatured() {
+      setIsLoading(true)
+      const { data: cars } = await supabase
+        .from('cars')
+        .select('*')
+        .eq('status', 'active')
+        .limit(8)
+      
+      if (cars) {
+        const mappedCars = cars.map(c => ({
+          ...c,
+          rating: 0,
+          review_count: 0
+        }))
+        setFeatured(mappedCars)
+        
+        const hostIds = Array.from(new Set(cars.map(c => c.host_id)))
+        if (hostIds.length > 0) {
+          const { data: hostData } = await supabase.from('users').select('*').in('id', hostIds)
+          if (hostData) {
+            const hMap: Record<string, any> = {}
+            hostData.forEach(h => { hMap[h.id] = { ...h, name: h.name || 'Hôte' } })
+            setHosts(hMap)
+          }
+        }
+      }
+      setIsLoading(false)
+    }
+    fetchFeatured()
+  }, [])
 
   const toggleSave = (e: React.MouseEvent, id: string) => {
     e.preventDefault()
@@ -39,10 +73,19 @@ export function FeaturedCarsSection() {
 
         {/* Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {featured.map(car => {
-            const host = getHostById(car.host_id)
-            if (!host) return null
-            return (
+          {isLoading ? (
+            <div className="col-span-full flex justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : featured.length === 0 ? (
+            <div className="col-span-full text-center text-muted-foreground py-12">
+              Aucune voiture disponible pour le moment.
+            </div>
+          ) : (
+            featured.map(car => {
+              const host = hosts[car.host_id]
+              if (!host) return null
+              return (
               <Link key={car.id} href={`/cars/${car.id}`} className="group block">
                 <div className="bg-white rounded-2xl border border-border shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col h-full">
 
@@ -115,7 +158,7 @@ export function FeaturedCarsSection() {
                 </div>
               </Link>
             )
-          })}
+          }))}
         </div>
 
         {/* CTA */}

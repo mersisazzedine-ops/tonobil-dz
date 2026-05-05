@@ -1,10 +1,10 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
-import { MOCK_CARS, MOCK_BOOKINGS } from '@/lib/mock-data'
 import { Car, Clock, DollarSign, Star, Calendar, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import { formatPriceShort, formatDate } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
 
 function CountdownTimer({ targetDate }: { targetDate: Date }) {
   const [timeLeft, setTimeLeft] = useState('')
@@ -29,10 +29,19 @@ function CountdownTimer({ targetDate }: { targetDate: Date }) {
 
 export default function HostDashboard() {
   const { user } = useAuth()
+  const [myCars, setMyCars] = useState<any[]>([])
+  const [myBookings, setMyBookings] = useState<any[]>([])
   
-  // Pour la démo, on prend quelques voitures et réservations aléatoires comme étant celles de l'hôte
-  const myCars = MOCK_CARS.slice(0, 3)
-  const myBookings = MOCK_BOOKINGS.filter(b => b.status === 'active' || b.status === 'upcoming')
+  useEffect(() => {
+    async function fetchData() {
+      if (!user) return
+      const { data: cars } = await supabase.from('cars').select('*').eq('host_id', user.id)
+      if (cars) setMyCars(cars)
+      const { data: bookings } = await supabase.from('bookings').select('*, cars(*)').eq('host_id', user.id).in('status', ['active', 'upcoming'])
+      if (bookings) setMyBookings(bookings)
+    }
+    fetchData()
+  }, [user])
 
   return (
     <div className="min-h-screen bg-secondary/30 pb-20">
@@ -76,7 +85,7 @@ export default function HostDashboard() {
             <h2 className="text-xl font-black flex items-center gap-2"><Clock className="w-5 h-5" /> Réservations actives & à venir</h2>
             <div className="space-y-4">
               {myBookings.map(booking => {
-                const car = MOCK_CARS.find(c => c.id === booking.car_id)
+                const car = booking.cars
                 if (!car) return null
                 return (
                   <div key={booking.id} className="bg-white p-5 rounded-2xl border border-border shadow-sm flex flex-col sm:flex-row gap-5">
