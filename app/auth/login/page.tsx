@@ -7,6 +7,14 @@ import { useAuth } from '@/lib/auth-context'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 
+const Field = ({ label, error, children }: { label:string; error?:string; children:React.ReactNode }) => (
+  <div>
+    <label className="block text-sm font-semibold text-foreground mb-1.5">{label}</label>
+    {children}
+    {error && <p className="text-destructive text-xs mt-1">{error}</p>}
+  </div>
+)
+
 export default function LoginPage() {
   const [tab, setTab] = useState<'login'|'signup'>('login')
   const [showPwd, setShowPwd] = useState(false)
@@ -102,13 +110,6 @@ export default function LoginPage() {
     router.push('/')
   }
 
-  const Field = ({ label, error, children }: { label:string; error?:string; children:React.ReactNode }) => (
-    <div>
-      <label className="block text-sm font-semibold text-foreground mb-1.5">{label}</label>
-      {children}
-      {error && <p className="text-destructive text-xs mt-1">{error}</p>}
-    </div>
-  )
 
   const inputCls = (err?: string) => `w-full px-4 py-3 rounded-xl border ${err ? 'border-red-500 ring-red-500/20' : 'border-gray-200'} bg-gray-50 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/50 focus:border-blue-600/50 focus:bg-white transition-all`
 
