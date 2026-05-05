@@ -21,19 +21,19 @@ export function formatPriceShort(priceInDZD: number): string {
 }
 
 // Date formatting
-export function formatDate(date: Date): string {
+export function formatDate(date: Date | string): string {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  }).format(date)
+  }).format(new Date(date))
 }
 
-export function formatDateShort(date: Date): string {
+export function formatDateShort(date: Date | string): string {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
-  }).format(date)
+  }).format(new Date(date))
 }
 
 export function formatTime(date: Date): string {
