@@ -98,6 +98,11 @@ export function Navbar() {
             <div className="hidden md:flex items-center gap-3">
               {isLoggedIn ? (
                 <div className="flex items-center gap-2 ml-4">
+                  {user?.is_admin && (
+                    <Link href="/admin" className="text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors px-3 py-2 rounded-lg flex items-center gap-1.5">
+                      <LayoutDashboard className="w-4 h-4" /> Admin
+                    </Link>
+                  )}
                   <Link href="/account" className="text-sm font-semibold text-gray-600 hover:text-blue-600 transition-colors px-3 py-2 flex items-center gap-2">
                     <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
                       {user?.name?.charAt(0).toUpperCase()}
@@ -168,6 +173,11 @@ export function Navbar() {
 
               {isLoggedIn ? (
                 <div className="border-t border-border pt-4 mt-4 space-y-1">
+                  {user?.is_admin && (
+                    <Link href="/admin" onClick={() => setIsOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-colors">
+                      <LayoutDashboard className="w-4 h-4" />Tableau de bord Admin
+                    </Link>
+                  )}
                   <Link href="/account" onClick={() => setIsOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"><Settings className="w-4 h-4" />Mon Profil</Link>
                   <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 transition-colors"><LogOut className="w-4 h-4" />Déconnexion</button>
                 </div>
