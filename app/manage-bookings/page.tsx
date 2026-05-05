@@ -132,7 +132,7 @@ export default function ManageBookingsPage() {
                   return (
                     <div key={booking.id} className="bg-white rounded-2xl border border-border overflow-hidden flex flex-col md:flex-row hover:shadow-md transition-shadow">
                       <div className="md:w-64 h-48 md:h-auto">
-                        <img src={car.images[0]} alt={car.make} className="w-full h-full object-cover" />
+                        <img src={car.images?.[0] || '/placeholder-car.jpg'} alt={car.make} className="w-full h-full object-cover" />
                       </div>
                       <div className="p-6 flex-1 flex flex-col justify-between">
                         <div>
@@ -224,7 +224,7 @@ export default function ManageBookingsPage() {
                       if (!car) return null
                       return (
                         <div key={booking.id} className="bg-white p-5 rounded-2xl border border-border shadow-sm flex flex-col sm:flex-row gap-5">
-                          <img src={car.images[0]} alt={car.make} className="w-full sm:w-32 h-24 object-cover rounded-xl" />
+                          <img src={car.images?.[0] || '/placeholder-car.jpg'} alt={car.make} className="w-full sm:w-32 h-24 object-cover rounded-xl" />
                           <div className="flex-1">
                             <div className="flex justify-between items-start mb-2">
                               <div>
@@ -250,7 +250,7 @@ export default function ManageBookingsPage() {
                             <div className="flex items-center justify-between border-t border-border pt-4">
                               <div className="flex flex-col">
                                 <span className="text-xs text-muted-foreground mb-0.5">Temps restant</span>
-                                <CountdownTimer targetDate={booking.check_out} />
+                                <CountdownTimer targetDate={new Date(booking.check_out)} />
                               </div>
                               <button className="text-sm font-bold bg-blue-50 text-blue-600 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors">Détails</button>
                             </div>
@@ -272,7 +272,7 @@ export default function ManageBookingsPage() {
                   {myCars.map(car => (
                     <Link href={`/cars/${car.id}`} key={car.id} className="block bg-white p-3 rounded-2xl border border-border shadow-sm hover:border-blue-400 transition-colors group">
                       <div className="flex gap-4">
-                        <img src={car.images[0]} alt={car.make} className="w-20 h-20 object-cover rounded-xl" />
+                        <img src={car.images?.[0] || '/placeholder-car.jpg'} alt={car.make} className="w-20 h-20 object-cover rounded-xl" />
                         <div className="flex-1 flex flex-col justify-center">
                           <h3 className="font-bold text-foreground group-hover:text-blue-600 transition-colors text-sm">{car.make} {car.model}</h3>
                           <p className="text-xs text-muted-foreground mb-2">{formatPriceShort(car.price_per_day)}/jour</p>
