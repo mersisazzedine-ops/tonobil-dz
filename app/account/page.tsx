@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Camera, Check, Shield, Upload, Loader2 } from 'lucide-react'
 import { getInitials } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -8,7 +9,8 @@ import { supabase } from '@/lib/supabase'
 import { User } from '@/lib/mock-data'
 
 export default function AccountPage() {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
+  const router = useRouter()
   const [dbUser, setDbUser] = useState<User | null>(null)
   const [profile, setProfile] = useState({ name: '', email: '', phone: '' })
   const [kycStatus, setKycStatus] = useState<'none' | 'pending' | 'verified'>('none')
@@ -42,9 +44,10 @@ export default function AccountPage() {
   const handleBecomeAdmin = async () => {
     if (!user) return
     const { error } = await supabase.from('users').update({ is_admin: true }).eq('id', user.id)
-    if (error) { toast.error('Erreur'); return }
+    if (error) { toast.error('Erreur: ' + error.message); return }
     toast.success('Vous êtes maintenant admin !')
-    setTimeout(() => window.location.reload(), 1000)
+    await refreshUser()
+    router.push('/admin')
   }
 
   const uploadDoc = async (file: File, type: 'id' | 'license') => {

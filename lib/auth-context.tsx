@@ -9,6 +9,7 @@ interface AuthContextType {
   isLoggedIn: boolean
   login: (u: AuthUser) => void
   logout: () => void
+  refreshUser: () => Promise<void>
   mode: 'client' | 'host'
   toggleMode: () => void
   isLoading: boolean
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   isLoggedIn: false,
   login: () => {},
   logout: () => {},
+  refreshUser: async () => {},
   mode: 'client',
   toggleMode: () => {},
   isLoading: true
@@ -99,6 +101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = (u: AuthUser) => setUser(u)
 
+  const refreshUser = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user) await fetchProfile(session.user)
+  }
+
   const logout = async () => {
     await supabase.auth.signOut()
     setUser(null)
@@ -113,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn: !!user, login, logout, mode, toggleMode, isLoading }}>
+    <AuthContext.Provider value={{ user, isLoggedIn: !!user, login, logout, refreshUser, mode, toggleMode, isLoading }}>
       {children}
     </AuthContext.Provider>
   )
