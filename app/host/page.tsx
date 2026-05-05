@@ -5,6 +5,8 @@ import { Shield, Star, Upload, X, Check, ChevronRight, ChevronLeft, Car, Clock, 
 import { CAR_BRANDS, ALGERIAN_WILAYAS, CAR_FEATURES } from '@/lib/constants'
 import { formatPriceShort } from '@/lib/utils'
 import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/auth-context'
 
 const TESTIMONIALS = [
   { name: 'Karim B.',  city: 'Alger',       text: "En moins d'une semaine ma voiture était déjà réservée. Processus simple, paiement rapide.", earned: '74 000 DA',  avatar: 'K' },
@@ -21,9 +23,11 @@ const PERKS = [
 
 export default function HostPage() {
   const router = useRouter()
+  const { user } = useAuth()
   const [view,     setView]     = useState<'hero'|'form'>('hero')
   const [formStep, setFormStep] = useState(1)
-  const [photos,   setPhotos]   = useState<string[]>([])
+  const [photos,   setPhotos]   = useState<{file: File, preview: string}[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>(['ac'])
   const [form, setForm] = useState({
     make:'', model:'', year:'', wilaya:'Alger', mileage:'',
@@ -32,7 +36,7 @@ export default function HostPage() {
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files; if (!files) return
-    Array.from(files).forEach(f => setPhotos(prev => [...prev, URL.createObjectURL(f)]))
+    Array.from(files).forEach(f => setPhotos(prev => [...prev, { file: f, preview: URL.createObjectURL(f) }]))
   }
   const toggleFeature = (f: string) =>
     setSelectedFeatures(prev => prev.includes(f) ? prev.filter(x=>x!==f) : [...prev,f])
@@ -46,9 +50,49 @@ export default function HostPage() {
       setFormStep(3)
     }
   }
-  const handleSubmit = () => {
-    toast.success('Votre voiture a été soumise pour révision! Nous vous contacterons sous 24h.')
-    setTimeout(() => router.push('/bookings'), 2000)
+  const handleSubmit = async () => {
+    if (!user) { toast.error('Veuillez vous connecter pour continuer'); return }
+    setIsSubmitting(true)
+    try {
+      const uploadedImageUrls: string[] = []
+      
+      for (const photo of photos) {
+        const ext = photo.file.name.split('.').pop()
+        const fileName = `${user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`
+        const { data, error } = await supabase.storage.from('car-images').upload(fileName, photo.file)
+        if (error) throw new Error('Erreur lors du téléchargement des images')
+        
+        const { data: publicData } = supabase.storage.from('car-images').getPublicUrl(fileName)
+        uploadedImageUrls.push(publicData.publicUrl)
+      }
+      
+      const { error } = await supabase.from('cars').insert({
+        host_id: user.id,
+        make: form.make,
+        model: form.model,
+        year: parseInt(form.year),
+        price_per_day: form.price,
+        deposit_amount: form.deposit,
+        transmission: form.transmission,
+        fuel_type: form.fuel,
+        seats: 5, doors: 5, mileage: parseInt(form.mileage) || 0,
+        images: uploadedImageUrls,
+        features: selectedFeatures,
+        city: form.wilaya, wilaya: form.wilaya, address: form.wilaya,
+        description: form.description,
+        car_type: 'sedan',
+        status: 'pending'
+      })
+      
+      if (error) throw new Error('Erreur lors de la création de l\'annonce')
+      
+      toast.success('Votre voiture a été soumise pour révision! Nous vous contacterons sous 24h.')
+      setTimeout(() => router.push('/manage-bookings'), 2000)
+    } catch (error: any) {
+      toast.error(error.message || 'Une erreur est survenue')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   /* ── HERO VIEW ── */
@@ -290,7 +334,7 @@ export default function HostPage() {
                 <div className="grid grid-cols-3 gap-3">
                   {photos.map((p,i) => (
                     <div key={i} className="relative aspect-video rounded-xl overflow-hidden border border-border shadow-sm">
-                      <img src={p} alt="" className="w-full h-full object-cover" />
+                      <img src={p.preview} alt="" className="w-full h-full object-cover" />
                       <button onClick={()=>setPhotos(prev=>prev.filter((_,j)=>j!==i))} type="button"
                         className="absolute top-2 right-2 w-7 h-7 bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors">
                         <X className="w-4 h-4 text-white" />
@@ -339,9 +383,9 @@ export default function HostPage() {
                 Suivant <ChevronRight className="w-5 h-5" />
               </button>
             ) : (
-              <button onClick={handleSubmit}
-                className="w-full bg-blue-600 text-white font-black py-4 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">
-                Soumettre ma voiture ✓
+              <button onClick={handleSubmit} disabled={isSubmitting}
+                className="w-full bg-blue-600 text-white font-black py-4 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-50">
+                {isSubmitting ? 'Soumission en cours...' : 'Soumettre ma voiture ✓'}
               </button>
             )}
           </div>

@@ -1,21 +1,75 @@
 'use client'
-import { useState } from 'react'
-import { Camera, Check, Shield, Upload } from 'lucide-react'
-import { MOCK_CURRENT_USER } from '@/lib/mock-data'
+import { useState, useEffect } from 'react'
+import { Camera, Check, Shield, Upload, Loader2 } from 'lucide-react'
 import { getInitials } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
+import { supabase } from '@/lib/supabase'
+import { User } from '@/lib/mock-data'
 
 export default function AccountPage() {
   const { user } = useAuth()
-  const [profile, setProfile] = useState({ 
-    name: user?.name || MOCK_CURRENT_USER.name, 
-    email: user?.email || MOCK_CURRENT_USER.email, 
-    phone: user?.phone || MOCK_CURRENT_USER.phone 
-  })
-  const [kycStatus, setKycStatus] = useState(MOCK_CURRENT_USER.kyc_status)
-  const [idDoc, setIdDoc] = useState(MOCK_CURRENT_USER.id_document)
-  const [licenseDoc, setLicenseDoc] = useState(MOCK_CURRENT_USER.license_document)
+  const [dbUser, setDbUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState({ name: '', email: '', phone: '' })
+  const [kycStatus, setKycStatus] = useState<'none' | 'pending' | 'verified'>('none')
+  const [idDoc, setIdDoc] = useState<string | null>(null)
+  const [licenseDoc, setLicenseDoc] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadProfile() {
+      if (!user) { setIsLoading(false); return }
+      const { data } = await supabase.from('users').select('*').eq('id', user.id).single()
+      if (data) {
+        setDbUser(data as User)
+        setProfile({ name: data.name || '', email: data.email || '', phone: data.phone || '' })
+        setKycStatus(data.kyc_status || 'none')
+        setIdDoc(data.id_document_url || null)
+        setLicenseDoc(data.license_document_url || null)
+      }
+      setIsLoading(false)
+    }
+    loadProfile()
+  }, [user])
+
+  const handleUpdateProfile = async () => {
+    if (!user) return
+    const { error } = await supabase.from('users').update({ name: profile.name, phone: profile.phone }).eq('id', user.id)
+    if (error) { toast.error('Erreur lors de la mise à jour'); return }
+    toast.success('Profil mis à jour!')
+  }
+
+  const uploadDoc = async (file: File, type: 'id' | 'license') => {
+    if (!user) return
+    toast.info('Téléchargement en cours...')
+    const ext = file.name.split('.').pop()
+    const fileName = `${user.id}-${type}-${Date.now()}.${ext}`
+    
+    const { error: uploadError } = await supabase.storage.from('kyc-documents').upload(fileName, file)
+    if (uploadError) { toast.error('Erreur lors du téléchargement'); return }
+    
+    const { data: publicData } = supabase.storage.from('kyc-documents').getPublicUrl(fileName)
+    const url = publicData.publicUrl
+    
+    const updateData = type === 'id' ? { id_document_url: url } : { license_document_url: url }
+    await supabase.from('users').update(updateData).eq('id', user.id)
+    
+    if (type === 'id') setIdDoc(url)
+    else setLicenseDoc(url)
+    
+    toast.success('Document ajouté avec succès')
+  }
+
+  const submitKyc = async () => {
+    if (!user) return
+    const { error } = await supabase.from('users').update({ kyc_status: 'pending' }).eq('id', user.id)
+    if (error) { toast.error('Erreur lors de la soumission'); return }
+    setKycStatus('pending')
+    toast.success('Documents soumis pour vérification')
+  }
+
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+  if (!user) return <div className="min-h-screen flex items-center justify-center text-gray-500">Veuillez vous connecter pour voir votre profil.</div>
 
   return (
     <div className="min-h-screen bg-secondary/30 pb-20">
@@ -65,7 +119,7 @@ export default function AccountPage() {
                 className="w-full px-4 py-3 rounded-xl border border-border bg-secondary/50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
             </div>
             
-            <button onClick={() => toast.success('Profil mis à jour!')} className="w-full sm:w-auto mt-4 bg-blue-600 text-white font-bold px-8 py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20">
+            <button onClick={handleUpdateProfile} className="w-full sm:w-auto mt-4 bg-blue-600 text-white font-bold px-8 py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20">
               Enregistrer les modifications
             </button>
           </div>
@@ -101,7 +155,7 @@ export default function AccountPage() {
                   <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50/50 transition-colors">
                     <Upload className="w-6 h-6 text-gray-400 mb-2" />
                     <span className="text-xs font-bold text-gray-500 px-4 text-center">Cliquez pour ajouter</span>
-                    <input type="file" accept="image/*" className="hidden" onChange={() => { setIdDoc('uploaded'); toast.success('Document ajouté') }} />
+                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => { if(e.target.files?.[0]) uploadDoc(e.target.files[0], 'id') }} />
                   </label>
                 )}
               </div>
@@ -121,7 +175,7 @@ export default function AccountPage() {
                   <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50/50 transition-colors">
                     <Upload className="w-6 h-6 text-gray-400 mb-2" />
                     <span className="text-xs font-bold text-gray-500 px-4 text-center">Cliquez pour ajouter</span>
-                    <input type="file" accept="image/*" className="hidden" onChange={() => { setLicenseDoc('uploaded'); toast.success('Document ajouté') }} />
+                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => { if(e.target.files?.[0]) uploadDoc(e.target.files[0], 'license') }} />
                   </label>
                 )}
               </div>
@@ -129,7 +183,7 @@ export default function AccountPage() {
           </div>
           
           {kycStatus === 'none' && (
-            <button onClick={() => { setKycStatus('pending'); toast.success('Documents soumis pour vérification') }} disabled={!idDoc || !licenseDoc}
+            <button onClick={submitKyc} disabled={!idDoc || !licenseDoc}
               className="w-full sm:w-auto bg-gray-900 text-white font-bold px-8 py-3 rounded-xl hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               Soumettre pour vérification
             </button>

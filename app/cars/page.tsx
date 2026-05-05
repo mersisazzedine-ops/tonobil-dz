@@ -1,13 +1,14 @@
 'use client'
-import { useState, useMemo, Suspense } from 'react'
+import { useState, useMemo, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Heart, Star, Zap, Users, Fuel, SlidersHorizontal, MapPin, X } from 'lucide-react'
-import { MOCK_CARS, getHostById } from '@/lib/mock-data'
-import { formatPriceShort, getInitials } from '@/lib/utils'
+import { getInitials, formatPriceShort } from '@/lib/utils'
 import { FilterSidebar } from '@/components/sections/filter-sidebar'
 import { SortBar } from '@/components/sections/sort-bar'
-import { filterCars, DEFAULT_FILTERS, getPriceRange, getYearRange, FilterState } from '@/lib/filter-utils'
+import { filterCars, DEFAULT_FILTERS, FilterState, getPriceRange, getYearRange } from '@/lib/filter-utils'
+import { supabase } from '@/lib/supabase'
+import { Car, Host } from '@/lib/mock-data' // We can still use the types from there or declare them
 
 function CarsContent() {
   const searchParams = useSearchParams()
@@ -27,15 +28,47 @@ function CarsContent() {
   const [saved, setSaved] = useState<Set<string>>(new Set())
   const [showFilters, setShowFilters] = useState(false)
   const [page, setPage] = useState(1)
+  const [carsData, setCarsData] = useState<Car[]>([])
+  const [hostsData, setHostsData] = useState<Record<string, Host>>({})
+  const [isLoading, setIsLoading] = useState(true)
   const PER_PAGE = 9
 
-  const priceRange = useMemo(() => getPriceRange(MOCK_CARS), [])
-  const yearRange = useMemo(() => getYearRange(MOCK_CARS), [])
+  useEffect(() => {
+    async function fetchData() {
+      setIsLoading(true)
+      const { data: cars } = await supabase.from('cars').select('*').eq('status', 'active')
+      if (cars) {
+        // map db to expected format
+        const mappedCars = cars.map(c => ({
+          ...c,
+          location: { city: c.city, wilaya: c.wilaya, address: c.address },
+          rating: 0,
+          review_count: 0
+        }))
+        setCarsData(mappedCars as Car[])
+        
+        const hostIds = Array.from(new Set(cars.map(c => c.host_id)))
+        if (hostIds.length > 0) {
+          const { data: hosts } = await supabase.from('users').select('*').in('id', hostIds)
+          if (hosts) {
+            const hMap: Record<string, any> = {}
+            hosts.forEach(h => { hMap[h.id] = { ...h, name: h.name || 'Hôte' } })
+            setHostsData(hMap)
+          }
+        }
+      }
+      setIsLoading(false)
+    }
+    fetchData()
+  }, [])
+
+  const priceRange = useMemo(() => getPriceRange(carsData), [carsData])
+  const yearRange = useMemo(() => getYearRange(carsData), [carsData])
   const filteredCars = useMemo(() => {
-    let cars = filterCars(MOCK_CARS, filters)
+    let cars = filterCars(carsData, filters)
     if (initCity) cars = cars.filter(c => c.location.wilaya === initCity || c.location.city === initCity)
     return cars
-  }, [filters, initCity])
+  }, [filters, initCity, carsData])
 
   const totalPages = Math.ceil(filteredCars.length / PER_PAGE)
   const paginated = filteredCars.slice((page-1)*PER_PAGE, page*PER_PAGE)
@@ -91,7 +124,7 @@ function CarsContent() {
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 mt-6">
                   {paginated.map(car => {
-                    const host = getHostById(car.host_id)
+                    const host = hostsData[car.host_id]
                     if (!host) return null
                     return (
                       <Link key={car.id} href={`/cars/${car.id}${queryString ? `?${queryString}` : ''}`}>

@@ -2,13 +2,15 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Eye, EyeOff, Car } from 'lucide-react'
+import { Eye, EyeOff, Car, Loader2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
   const [tab, setTab] = useState<'login'|'signup'>('login')
   const [showPwd, setShowPwd] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
   const { login } = useAuth()
 
@@ -43,26 +45,61 @@ export default function LoginPage() {
     return errs
   }
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     const errs = validateLogin()
     setLoginErrors(errs)
-    if (Object.keys(errs).length === 0) {
-      login({ id:'user-123', name:'Sarah Belkacemi', email:loginForm.email, phone:'+213 661 234 567', avatar:'SB' })
-      toast.success('Bienvenue sur TONOBIL DZ!')
-      router.push('/')
+    if (Object.keys(errs).length > 0) return
+
+    setIsSubmitting(true)
+    const { error } = await supabase.auth.signInWithPassword({
+      email: loginForm.email,
+      password: loginForm.password
+    })
+    setIsSubmitting(false)
+
+    if (error) {
+      toast.error(error.message || 'Email ou mot de passe incorrect')
+      return
     }
+    toast.success('Bienvenue sur TONOBIL DZ!')
+    router.push('/')
   }
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     const errs = validateSignup()
     setSignupErrors(errs)
-    if (Object.keys(errs).length === 0) {
-      login({ id:'user-new', name:`${signupForm.firstName} ${signupForm.lastName}`, email:signupForm.email, phone:signupForm.phone, avatar:signupForm.firstName[0]+signupForm.lastName[0] })
-      toast.success(`Bienvenue ${signupForm.firstName}! Votre compte a été créé.`)
-      router.push('/')
+    if (Object.keys(errs).length > 0) return
+
+    setIsSubmitting(true)
+    const { error } = await supabase.auth.signUp({
+      email: signupForm.email,
+      password: signupForm.password,
+      options: {
+        data: { full_name: `${signupForm.firstName} ${signupForm.lastName}` }
+      }
+    })
+    setIsSubmitting(false)
+
+    if (error) {
+      toast.error(error.message || 'Erreur lors de la création du compte')
+      return
     }
+
+    // Update phone number in profile
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user) {
+      await supabase.from('users').upsert({
+        id: session.user.id,
+        email: signupForm.email,
+        name: `${signupForm.firstName} ${signupForm.lastName}`,
+        phone: signupForm.phone
+      })
+    }
+
+    toast.success(`Bienvenue ${signupForm.firstName}! Votre compte a été créé.`)
+    router.push('/')
   }
 
   const Field = ({ label, error, children }: { label:string; error?:string; children:React.ReactNode }) => (
@@ -123,8 +160,8 @@ export default function LoginPage() {
               <div className="flex justify-end">
                 <a href="#" className="text-sm font-semibold text-blue-600 hover:text-blue-700">Mot de passe oublié ?</a>
               </div>
-              <button type="submit" className="w-full bg-blue-600 text-white font-black py-4 rounded-xl hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/20 transition-all">
-                Se connecter
+              <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-black py-4 rounded-xl hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/20 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" />Connexion...</> : 'Se connecter'}
               </button>
               
               <div className="relative mt-8 mb-6">
@@ -190,8 +227,8 @@ export default function LoginPage() {
                 </label>
                 {signupErrors.terms && <p className="text-destructive text-xs mt-1">{signupErrors.terms}</p>}
               </div>
-              <button type="submit" className="w-full bg-blue-600 text-white font-black py-4 rounded-xl hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/20 transition-all mt-4">
-                Créer mon compte
+              <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-black py-4 rounded-xl hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/20 transition-all mt-4 disabled:opacity-60 flex items-center justify-center gap-2">
+                {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" />Création...</> : 'Créer mon compte'}
               </button>
             </form>
           )}

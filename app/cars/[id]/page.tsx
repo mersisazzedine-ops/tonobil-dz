@@ -1,19 +1,24 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Star, Shield, MessageSquare, Users, Fuel, Settings, MapPin, ChevronLeft, Zap, Calendar, X, CheckCircle2, FileText, Phone } from 'lucide-react'
-import { MOCK_CARS, getHostById, getCarReviews } from '@/lib/mock-data'
+import { Star, Shield, MessageSquare, Users, Fuel, Settings, MapPin, ChevronLeft, Zap, Calendar, X, CheckCircle2, FileText, Phone, Loader2 } from 'lucide-react'
 import { formatPriceShort, calculateDaysRented, getInitials } from '@/lib/utils'
 import { CAR_FEATURES } from '@/lib/constants'
 import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/auth-context'
+import { Car, Host, Review } from '@/lib/mock-data'
 
 export default function CarDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const car    = MOCK_CARS.find(c => c.id === params.id)
-  const host   = car ? getHostById(car.host_id) : null
-  const reviews = car ? getCarReviews(car.id) : []
+  const { user } = useAuth()
+  
+  const [car, setCar] = useState<Car | null>(null)
+  const [host, setHost] = useState<Host | null>(null)
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   const [selectedImage, setSelectedImage] = useState(0)
   const searchParams = useSearchParams()
@@ -27,12 +32,45 @@ export default function CarDetailPage() {
   const licenseRef = useRef<HTMLInputElement>(null)
   const [licenseFile,    setLicenseFile]    = useState<File|null>(null)
   const [licensePreview, setLicensePreview] = useState<string|null>(null)
+  const [isBooking, setIsBooking] = useState(false)
+
+  useEffect(() => {
+    async function fetchData() {
+      setIsLoading(true)
+      const carId = Array.isArray(params.id) ? params.id[0] : params.id
+      
+      const { data: carData } = await supabase.from('cars').select('*').eq('id', carId).single()
+      if (carData) {
+        setCar({
+          ...carData,
+          location: { city: carData.city, wilaya: carData.wilaya, address: carData.address },
+          rating: 0, review_count: 0
+        } as Car)
+        
+        const { data: hostData } = await supabase.from('users').select('*').eq('id', carData.host_id).single()
+        if (hostData) {
+          setHost({ ...hostData, rating: 5, reviews_count: 0, name: hostData.name || 'Hôte' } as Host)
+        }
+        
+        const { data: reviewsData } = await supabase.from('reviews').select('*, users(name, avatar_url)').eq('car_id', carId)
+        if (reviewsData) {
+          setReviews(reviewsData.map(r => ({
+            id: r.id, car_id: r.car_id, user_name: r.users?.name || 'User', avatar: 'U', rating: r.rating, comment: r.comment, date: new Date(r.created_at).toLocaleDateString()
+          })) as Review[])
+        }
+      }
+      setIsLoading(false)
+    }
+    if (params.id) fetchData()
+  }, [params.id])
 
   const handleLicense = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return
     setLicenseFile(f); setLicensePreview(URL.createObjectURL(f))
   }
   const removeLicense = () => { setLicenseFile(null); setLicensePreview(null); if (licenseRef.current) licenseRef.current.value = '' }
+
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
 
   if (!car || !host) return (
     <div className="min-h-screen flex items-center justify-center">
@@ -57,13 +95,49 @@ export default function CarDetailPage() {
   const avgRating  = reviews.length > 0 ? reviews.reduce((s,r) => s+r.rating,0)/reviews.length : car.rating
   const ratingCounts = [5,4,3,2,1].map(n => ({ n, count: reviews.filter(r => r.rating===n).length }))
 
-  const handleBook = () => {
+  const handleBook = async () => {
+    if (!user)                 { toast.error('Veuillez vous connecter pour réserver'); return }
     if (!checkIn || !checkOut) { toast.error('Veuillez sélectionner vos dates'); return }
     if (hours < 2)             { toast.error('La durée minimale de location est de 2 heures.'); return }
     if (!licenseFile)          { toast.error('Veuillez télécharger votre permis de conduire'); return }
     if (!agreedToPolicy)       { toast.error('Veuillez accepter les conditions générales'); return }
-    toast.success('Réservation confirmée!')
-    setTimeout(() => router.push('/bookings'), 1500)
+    
+    setIsBooking(true)
+    try {
+      // 1. Upload Document
+      const ext = licenseFile.name.split('.').pop()
+      const fileName = `${user.id}-${Date.now()}.${ext}`
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('kyc-documents')
+        .upload(fileName, licenseFile)
+
+      if (uploadError) throw new Error('Erreur lors du téléchargement du permis')
+
+      // 2. Create Booking
+      const referenceNumber = `TNB-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`
+      const { error: bookingError } = await supabase.from('bookings').insert({
+        car_id: car.id,
+        user_id: user.id,
+        host_id: car.host_id,
+        reference_number: referenceNumber,
+        check_in: checkIn,
+        check_out: checkOut,
+        check_in_time: fromTime,
+        check_out_time: toTime,
+        total_price: total,
+        payment_method: payment === 'online' ? 'edahabia' : 'cash',
+        agreed_to_policy: agreedToPolicy
+      })
+
+      if (bookingError) throw new Error('Erreur lors de la réservation')
+
+      toast.success('Réservation confirmée!')
+      setTimeout(() => router.push('/manage-bookings'), 1500)
+    } catch (error: any) {
+      toast.error(error.message || 'Une erreur est survenue')
+    } finally {
+      setIsBooking(false)
+    }
   }
 
   return (

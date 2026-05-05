@@ -1,54 +1,105 @@
 'use client'
-import { useState } from 'react'
-import { Users, Car, DollarSign, LayoutDashboard, Check, X, Shield, Settings, FileText } from 'lucide-react'
-import { MOCK_USERS, MOCK_CARS, MOCK_BOOKINGS } from '@/lib/mock-data'
+import { useState, useEffect } from 'react'
+import { Users, Car, DollarSign, LayoutDashboard, Check, X, Shield, Settings, FileText, Loader2 } from 'lucide-react'
 import { formatPriceShort, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
+import { User, Car as CarType, Booking } from '@/lib/mock-data'
 
 type Tab = 'overview' | 'users' | 'cars' | 'finances' | 'hosts'
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   
-  // Local state for pending items so we can approve/reject in the UI
-  const [pendingUsers, setPendingUsers] = useState(MOCK_USERS.filter(u => u.kyc_status === 'pending'))
-  const [pendingHosts, setPendingHosts] = useState(MOCK_USERS.filter(u => u.host_status === 'pending'))
-  const [pendingCars, setPendingCars] = useState(MOCK_CARS.filter(c => c.status === 'pending'))
+  const [pendingUsers, setPendingUsers] = useState<User[]>([])
+  const [pendingHosts, setPendingHosts] = useState<User[]>([])
+  const [pendingCars, setPendingCars] = useState<CarType[]>([])
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [totalUsers, setTotalUsers] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const handleApproveUser = (id: string) => {
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  const fetchData = async () => {
+    setIsLoading(true)
+    
+    const [
+      { data: pUsers }, 
+      { data: pHosts }, 
+      { data: pCars }, 
+      { data: bks },
+      { count: uCount }
+    ] = await Promise.all([
+      supabase.from('users').select('*').eq('kyc_status', 'pending'),
+      supabase.from('users').select('*').eq('host_status', 'pending'),
+      supabase.from('cars').select('*').eq('status', 'pending'),
+      supabase.from('bookings').select('*'),
+      supabase.from('users').select('*', { count: 'exact', head: true })
+    ])
+    
+    if (pUsers) setPendingUsers(pUsers.map((u: any) => ({...u, avatar: 'U'})) as User[])
+    if (pHosts) setPendingHosts(pHosts.map((u: any) => ({...u, avatar: 'U'})) as User[])
+    if (pCars) {
+      setPendingCars(pCars.map((c: any) => ({
+        ...c, 
+        location: { city: c.city, wilaya: c.wilaya, address: c.address }
+      })) as CarType[])
+    }
+    if (bks) setBookings(bks as unknown as Booking[])
+    if (uCount !== null) setTotalUsers(uCount)
+      
+    setIsLoading(false)
+  }
+
+  const handleApproveUser = async (id: string) => {
+    const { error } = await supabase.from('users').update({ kyc_status: 'verified' }).eq('id', id)
+    if (error) { toast.error('Erreur'); return }
     setPendingUsers(prev => prev.filter(u => u.id !== id))
     toast.success('Utilisateur vérifié (KYC approuvé)')
   }
 
-  const handleRejectUser = (id: string) => {
+  const handleRejectUser = async (id: string) => {
+    const { error } = await supabase.from('users').update({ kyc_status: 'none' }).eq('id', id)
+    if (error) { toast.error('Erreur'); return }
     setPendingUsers(prev => prev.filter(u => u.id !== id))
     toast.error('KYC rejeté')
   }
 
-  const handleApproveCar = (id: string) => {
+  const handleApproveCar = async (id: string) => {
+    const { error } = await supabase.from('cars').update({ status: 'active' }).eq('id', id)
+    if (error) { toast.error('Erreur'); return }
     setPendingCars(prev => prev.filter(c => c.id !== id))
     toast.success('Véhicule approuvé et publié')
   }
 
-  const handleRejectCar = (id: string) => {
+  const handleRejectCar = async (id: string) => {
+    const { error } = await supabase.from('cars').delete().eq('id', id)
+    if (error) { toast.error('Erreur'); return }
     setPendingCars(prev => prev.filter(c => c.id !== id))
     toast.error('Véhicule rejeté')
   }
 
-  const handleApproveHost = (id: string) => {
+  const handleApproveHost = async (id: string) => {
+    const { error } = await supabase.from('users').update({ host_status: 'approved' }).eq('id', id)
+    if (error) { toast.error('Erreur'); return }
     setPendingHosts(prev => prev.filter(u => u.id !== id))
     toast.success('Hôte approuvé avec succès')
   }
 
-  const handleRejectHost = (id: string) => {
+  const handleRejectHost = async (id: string) => {
+    const { error } = await supabase.from('users').update({ host_status: 'none' }).eq('id', id)
+    if (error) { toast.error('Erreur'); return }
     setPendingHosts(prev => prev.filter(u => u.id !== id))
     toast.error('Demande d\'hôte rejetée')
   }
 
   // Calculate some KPIs
-  const totalUsers = MOCK_USERS.length
-  const activeBookings = MOCK_BOOKINGS.filter(b => b.status === 'active' || b.status === 'upcoming').length
-  const platformRevenue = MOCK_BOOKINGS.reduce((acc, b) => acc + (b.total_price * 0.1), 0) // 10% fee
+  const activeBookings = bookings.filter(b => b.status === 'active' || b.status === 'upcoming').length
+  const platformRevenue = bookings.reduce((acc, b) => acc + (b.total_price * 0.1), 0) // 10% fee
+
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
 
   return (
     <div className="min-h-screen bg-secondary/30 flex">
@@ -290,7 +341,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {MOCK_BOOKINGS.map(b => (
+                  {bookings.map(b => (
                     <tr key={b.id} className="hover:bg-secondary/50 transition-colors">
                       <td className="p-4 font-mono text-xs">
                         {b.reference_number}

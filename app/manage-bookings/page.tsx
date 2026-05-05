@@ -1,9 +1,11 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Car, Clock, DollarSign, Star, Calendar, ChevronRight, MapPin, Map } from 'lucide-react'
-import { MOCK_CARS, MOCK_BOOKINGS } from '@/lib/mock-data'
+import { Car, Clock, DollarSign, Star, Calendar, ChevronRight, MapPin, Map, Loader2 } from 'lucide-react'
 import { formatPriceShort, formatDate } from '@/lib/utils'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/auth-context'
+import { Booking, Car as CarType } from '@/lib/mock-data'
 
 type Tab = 'trips' | 'hosting'
 
@@ -29,14 +31,62 @@ function CountdownTimer({ targetDate }: { targetDate: Date }) {
 }
 
 export default function ManageBookingsPage() {
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<Tab>('trips')
   
-  // Fake user id filtering
-  const myTrips = MOCK_BOOKINGS
-  
-  // Fake host filtering
-  const myCars = MOCK_CARS.slice(0, 3)
-  const myHostingBookings = MOCK_BOOKINGS.filter(b => b.status === 'active' || b.status === 'upcoming')
+  const [myTrips, setMyTrips] = useState<Booking[]>([])
+  const [myCars, setMyCars] = useState<CarType[]>([])
+  const [myHostingBookings, setMyHostingBookings] = useState<Booking[]>([])
+  const [allCarsMap, setAllCarsMap] = useState<Record<string, CarType>>({})
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchData() {
+      if (!user) { setIsLoading(false); return }
+      
+      setIsLoading(true)
+      
+      // Fetch my trips
+      const { data: trips } = await supabase.from('bookings').select('*').eq('user_id', user.id)
+      if (trips) setMyTrips(trips as unknown as Booking[])
+      
+      // Fetch my cars
+      const { data: cars } = await supabase.from('cars').select('*').eq('host_id', user.id)
+      if (cars) setMyCars(cars as unknown as CarType[])
+      
+      // Fetch bookings for my cars
+      const { data: hostBookings } = await supabase.from('bookings').select('*').eq('host_id', user.id)
+      if (hostBookings) {
+        setMyHostingBookings(
+          (hostBookings as unknown as Booking[]).filter(b => b.status === 'active' || b.status === 'upcoming')
+        )
+      }
+      
+      // Fetch cars for all bookings (trips + hosting) to display
+      const allCarIds = new Set([
+        ...(trips || []).map(b => b.car_id), 
+        ...(hostBookings || []).map(b => b.car_id),
+        ...(cars || []).map(c => c.id)
+      ])
+      
+      if (allCarIds.size > 0) {
+        const { data: allCars } = await supabase.from('cars').select('*').in('id', Array.from(allCarIds))
+        if (allCars) {
+          const cMap: Record<string, any> = {}
+          allCars.forEach(c => { 
+            cMap[c.id] = { ...c, location: { wilaya: c.wilaya, city: c.city, address: c.address } }
+          })
+          setAllCarsMap(cMap)
+        }
+      }
+      
+      setIsLoading(false)
+    }
+    fetchData()
+  }, [user])
+
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+  if (!user) return <div className="min-h-screen flex items-center justify-center text-gray-500">Veuillez vous connecter pour voir vos réservations.</div>
 
   return (
     <div className="min-h-screen bg-secondary/30 pb-20">
@@ -77,7 +127,7 @@ export default function ManageBookingsPage() {
             ) : (
               <div className="space-y-4">
                 {myTrips.map(booking => {
-                  const car = MOCK_CARS.find(c => c.id === booking.car_id)
+                  const car = allCarsMap[booking.car_id]
                   if (!car) return null
                   return (
                     <div key={booking.id} className="bg-white rounded-2xl border border-border overflow-hidden flex flex-col md:flex-row hover:shadow-md transition-shadow">
@@ -170,7 +220,7 @@ export default function ManageBookingsPage() {
                     </div>
                   ) : (
                     myHostingBookings.map(booking => {
-                      const car = MOCK_CARS.find(c => c.id === booking.car_id)
+                      const car = allCarsMap[booking.car_id]
                       if (!car) return null
                       return (
                         <div key={booking.id} className="bg-white p-5 rounded-2xl border border-border shadow-sm flex flex-col sm:flex-row gap-5">
